@@ -44,6 +44,30 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.use(express.json());
 
+// 健康检查接口（必须在静态文件中间件之前）
+app.get('/api/health', (_req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// 获取房间信息接口（必须在静态文件中间件之前）
+app.get('/api/room/:roomId', (req, res) => {
+  const { roomId } = req.params;
+  const room = getRoom(roomId);
+  
+  if (!room) {
+    res.status(404).json({ error: '房间不存在' });
+    return;
+  }
+  
+  // 只返回公开信息
+  res.json({
+    roomId: room.roomId,
+    phase: room.phase,
+    playerCount: room.players.length,
+    maxPlayers: room.maxPlayers,
+  });
+});
+
 // Socket.io配置
 const io = new Server<ClientToServerEvents, ServerToClientEvents>(httpServer, {
   cors: corsOptions,
@@ -54,7 +78,8 @@ const io = new Server<ClientToServerEvents, ServerToClientEvents>(httpServer, {
 if (process.env.NODE_ENV === 'production') {
   app.use(express.static(path.join(__dirname, '../../client/dist')));
   
-  app.get('*', (req, res) => {
+  // SPA回退：非API路径都返回index.html
+  app.get(/^(?!\/api\/).*$/, (req, res) => {
     res.sendFile(path.join(__dirname, '../../client/dist/index.html'));
   });
 }
@@ -314,30 +339,6 @@ io.on('connection', (socket) => {
         socket.to(result.roomId).emit('game:state', result.state);
       }
     }
-  });
-});
-
-// 健康检查接口
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
-});
-
-// 获取房间信息接口
-app.get('/api/room/:roomId', (req, res) => {
-  const { roomId } = req.params;
-  const room = getRoom(roomId);
-  
-  if (!room) {
-    res.status(404).json({ error: '房间不存在' });
-    return;
-  }
-  
-  // 只返回公开信息
-  res.json({
-    roomId: room.roomId,
-    phase: room.phase,
-    playerCount: room.players.length,
-    maxPlayers: room.maxPlayers,
   });
 });
 
