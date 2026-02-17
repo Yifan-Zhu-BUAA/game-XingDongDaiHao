@@ -66,11 +66,24 @@ const LS_PLAYER_NAME = 'codenames_playerName';
 const LS_ROOM_ID = 'codenames_roomId';
 const LS_CLIENT_ID = 'codenames_clientId';
 
+// 生成 UUID v4（兼容非 HTTPS 环境）
+function generateUUID(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  // fallback: 手动生成 UUID v4
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
 // 获取或生成 clientId
 function getClientId(): string {
   let clientId = localStorage.getItem(LS_CLIENT_ID);
   if (!clientId) {
-    clientId = crypto.randomUUID();
+    clientId = generateUUID();
     localStorage.setItem(LS_CLIENT_ID, clientId);
   }
   return clientId;
