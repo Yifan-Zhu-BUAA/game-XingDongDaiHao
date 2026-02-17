@@ -138,10 +138,35 @@ export default function RoomPage() {
             </div>
           </div>
           <button
-            onClick={() => {
+            onClick={async () => {
               const url = `${window.location.origin}/room/${roomId}`;
-              navigator.clipboard.writeText(url);
-              alert('房间链接已复制到剪贴板，分享给好友吧！');
+              try {
+                // 尝试使用现代 Clipboard API
+                if (navigator.clipboard && window.isSecureContext) {
+                  await navigator.clipboard.writeText(url);
+                  alert('房间链接已复制到剪贴板，分享给好友吧！');
+                } else {
+                  // 降级方案：使用传统的复制方法
+                  const textArea = document.createElement('textarea');
+                  textArea.value = url;
+                  textArea.style.position = 'fixed';
+                  textArea.style.left = '-999999px';
+                  textArea.style.top = '-999999px';
+                  document.body.appendChild(textArea);
+                  textArea.focus();
+                  textArea.select();
+                  const successful = document.execCommand('copy');
+                  document.body.removeChild(textArea);
+                  if (successful) {
+                    alert('房间链接已复制到剪贴板，分享给好友吧！');
+                  } else {
+                    throw new Error('execCommand failed');
+                  }
+                }
+              } catch (err) {
+                // 最终降级：显示链接让用户手动复制
+                alert(`复制失败，请手动复制链接：\n${url}`);
+              }
             }}
             className="text-blue-600 hover:text-blue-800 text-sm"
           >

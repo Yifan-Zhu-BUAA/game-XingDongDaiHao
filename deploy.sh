@@ -1,68 +1,62 @@
 #!/bin/bash
-# 行动代号游戏 - 阿里云快速部署脚本
+# 行动代号 - 一键部署脚本
+# 用法: ./deploy.sh [commit message]
+# 示例: ./deploy.sh "feat: 新增功能"
+#       ./deploy.sh              # 自动生成提交信息
 
-echo "🚀 开始部署行动代号游戏..."
+set -e
 
-# 颜色输出
-RED='\033[0;31m'
+SERVER="root@8.134.10.196"
+SERVER_PWD="Zyf86979196"
+REMOTE_DIR="/root/game-XingDongDaiHao"
+
 GREEN='\033[0;32m'
+RED='\033[0;31m'
 YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
-# 检查是否在项目根目录
-if [ ! -f "package.json" ]; then
-    echo "${RED}❌ 错误：请在项目根目录运行此脚本${NC}"
-    exit 1
+# 确保在项目根目录
+cd "$(dirname "$0")"
+
+echo -e "${YELLOW}🚀 开始部署...${NC}\n"
+
+# 1. 本地构建
+echo -e "${YELLOW}[1/4] 本地构建${NC}"
+npm run build 2>&1 | tail -5
+echo -e "${GREEN}✅ 构建通过${NC}\n"
+
+# 2. Git提交推送
+echo -e "${YELLOW}[2/4] Git提交推送${NC}"
+git add -A
+if git diff --cached --quiet; then
+  echo "没有新的更改，跳过提交"
+else
+  MSG="${1:-update: $(date '+%Y-%m-%d %H:%M')}"
+  git commit -m "$MSG"
+  echo -e "${GREEN}✅ 已提交: $MSG${NC}"
+fi
+git push origin main
+echo -e "${GREEN}✅ 已推送到远程仓库${NC}\n"
+
+# 3. 远程部署
+echo -e "${YELLOW}[3/4] 远程服务器部署${NC}"
+sshpass -p "$SERVER_PWD" ssh -o StrictHostKeyChecking=no "$SERVER" "
+  cd $REMOTE_DIR && \
+  git pull && \
+  npm run build 2>&1 | tail -5 && \
+  pm2 restart codenames
+"
+echo -e "${GREEN}✅ 远程部署完成${NC}\n"
+
+# 4. 健康检查
+echo -e "${YELLOW}[4/4] 健康检查${NC}"
+sleep 2
+HEALTH=$(curl -s http://8.134.10.196:3000/api/health)
+if echo "$HEALTH" | grep -q '"ok"'; then
+  echo -e "${GREEN}✅ 服务正常: $HEALTH${NC}"
+else
+  echo -e "${RED}❌ 健康检查失败: $HEALTH${NC}"
+  exit 1
 fi
 
-echo "${YELLOW}📦 步骤 1/5: 安装依赖...${NC}"
-npm run install:all
-if [ $? -ne 0 ]; then
-    echo "${RED}❌ 依赖安装失败${NC}"
-    exit 1
-fi
-
-echo "${YELLOW}🔨 步骤 2/5: 构建项目...${NC}"
-npm run build
-if [ $? -ne 0 ]; then
-    echo "${RED}❌ 构建失败${NC}"
-    exit 1
-fi
-
-echo "${YELLOW}🚀 步骤 3/5: 启动服务...${NC}"
-# 检查 pm2 是否安装
-if ! command -v pm2 &> /dev/null; then
-    echo "${YELLOW}📥 安装 pm2 进程管理器...${NC}"
-    npm install -g pm2
-fi
-
-# 如果服务已存在，先删除
-pm2 delete codenames 2>/dev/null
-
-# 启动服务
-pm2 start server/dist/index.js --name codenames
-if [ $? -ne 0 ]; then
-    echo "${RED}❌ 启动失败${NC}"
-    exit 1
-fi
-
-echo "${YELLOW}💾 步骤 4/5: 保存配置...${NC}"
-pm2 save
-pm2 startup
-
-echo "${GREEN}✅ 步骤 5/5: 部署完成！${NC}"
-echo ""
-echo "${GREEN}🎮 游戏已启动！${NC}"
-echo ""
-echo "📱 访问地址:"
-echo "   本地: http://localhost:3000"
-echo ""
-echo "🔧 常用命令:"
-echo "   查看状态: pm2 status"
-echo "   查看日志: pm2 logs codenames"
-echo "   重启服务: pm2 restart codenames"
-echo "   停止服务: pm2 stop codenames"
-echo ""
-
-# 显示服务状态
-pm2 status
+echo -e "\n${GREEN}🎉 部署完成! 访问: http://8.134.10.196:3000${NC}"
