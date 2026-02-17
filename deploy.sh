@@ -40,23 +40,24 @@ echo -e "${GREEN}✅ 已推送到远程仓库${NC}\n"
 
 # 3. 远程部署
 echo -e "${YELLOW}[3/4] 远程服务器部署${NC}"
-sshpass -p "$SERVER_PWD" ssh -o StrictHostKeyChecking=no "$SERVER" "
-  cd $REMOTE_DIR && \
-  git pull && \
-  npm run build 2>&1 | tail -5 && \
-  pm2 restart codenames
-"
+sshpass -p 'Zyf86979196' ssh -o StrictHostKeyChecking=no root@8.134.10.196 'cd /root/game-XingDongDaiHao && git pull origin main && cd server && npm run build 2>&1 | tail -5 && cd .. && NODE_ENV=production pm2 restart codenames'
 echo -e "${GREEN}✅ 远程部署完成${NC}\n"
 
 # 4. 健康检查
 echo -e "${YELLOW}[4/4] 健康检查${NC}"
-sleep 2
-HEALTH=$(curl -s http://8.134.10.196:3000/api/health)
-if echo "$HEALTH" | grep -q '"ok"'; then
-  echo -e "${GREEN}✅ 服务正常: $HEALTH${NC}"
-else
-  echo -e "${RED}❌ 健康检查失败: $HEALTH${NC}"
-  exit 1
-fi
+sleep 3
+for i in 1 2 3; do
+  HEALTH=$(curl -s http://8.134.10.196:3000/api/health)
+  if echo "$HEALTH" | grep -q '"ok"'; then
+    echo -e "${GREEN}✅ 服务正常: $HEALTH${NC}"
+    break
+  fi
+  if [ "$i" -eq 3 ]; then
+    echo -e "${RED}❌ 健康检查失败: $HEALTH${NC}"
+    exit 1
+  fi
+  echo "等待服务启动... (重试 $i/3)"
+  sleep 2
+done
 
 echo -e "\n${GREEN}🎉 部署完成! 访问: http://8.134.10.196:3000${NC}"
