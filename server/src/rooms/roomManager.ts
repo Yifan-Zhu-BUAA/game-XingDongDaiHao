@@ -128,6 +128,34 @@ export function joinRoom(roomId: string, socketId: string, playerName: string, c
   return { success: true, player, state: room };
 }
 
+// 玩家修改昵称
+export function renamePlayer(roomId: string, socketId: string, newName: string): 
+  { success: boolean; error?: string; oldName?: string; state?: GameState } {
+  
+  const room = rooms.get(roomId);
+  if (!room) return { success: false, error: '房间不存在' };
+  
+  const player = room.players.find(p => p.socketId === socketId);
+  if (!player) return { success: false, error: '玩家不存在' };
+  
+  // 校验昵称长度
+  const trimmed = newName.trim();
+  if (!trimmed || trimmed.length > 4) {
+    return { success: false, error: '昵称需为1-4个字符' };
+  }
+  
+  // 检查是否有同名在线玩家（排除自己）
+  const duplicate = room.players.find(p => p.name === trimmed && p.socketId !== socketId && p.isOnline);
+  if (duplicate) {
+    return { success: false, error: '该昵称已被使用' };
+  }
+  
+  const oldName = player.name;
+  player.name = trimmed;
+  
+  return { success: true, oldName, state: room };
+}
+
 // 玩家断线（仅标记离线，不移除，房间存在期间随时可重连）
 export function playerDisconnect(socketId: string): { roomId?: string; playerId?: string; state?: GameState } {
   const roomId = playerToRoom.get(socketId);

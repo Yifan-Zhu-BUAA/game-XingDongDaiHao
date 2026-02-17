@@ -1,16 +1,39 @@
 import { useSocketStore } from '../store/socketStore';
 
 export default function ScoreBoard() {
-  const { gameState } = useSocketStore();
+  const { gameState, playerName } = useSocketStore();
 
   if (!gameState) return null;
 
   const redProgress = (gameState.redScore / gameState.redTotal) * 100;
   const blueProgress = (gameState.blueScore / gameState.blueTotal) * 100;
 
+  // 按队伍分组玩家
+  const redPlayers = gameState.players.filter(p => p.team === 'red' && p.seatIndex !== null);
+  const bluePlayers = gameState.players.filter(p => p.team === 'blue' && p.seatIndex !== null);
+
+  const renderPlayer = (p: typeof gameState.players[0]) => {
+    const isMe = p.name === playerName;
+    return (
+      <span
+        key={p.id}
+        className={`inline-flex items-center gap-0.5 text-xs px-1.5 py-0.5 rounded-full ${
+          isMe ? 'ring-2 ring-yellow-400 font-bold' : ''
+        } ${
+          p.team === 'red'
+            ? 'bg-red-50 text-red-700'
+            : 'bg-blue-50 text-blue-700'
+        } ${!p.isOnline ? 'opacity-40' : ''}`}
+      >
+        {p.isSpymaster ? '👑' : '🎯'}{p.name}
+        {isMe && <span className="text-yellow-500 text-[10px]">·我</span>}
+      </span>
+    );
+  };
+
   return (
     <div className="bg-white shadow-sm border-b">
-      <div className="max-w-6xl mx-auto px-4 py-4">
+      <div className="max-w-6xl mx-auto px-4 py-3">
         <div className="flex items-center justify-center gap-4 sm:gap-8">
           {/* 红队 */}
           <div className="flex-1 max-w-xs">
@@ -32,6 +55,9 @@ export default function ScoreBoard() {
                 className="h-full bg-game-red transition-all duration-500"
                 style={{ width: `${redProgress}%` }}
               />
+            </div>
+            <div className="flex flex-wrap gap-1 mt-1.5">
+              {redPlayers.map(renderPlayer)}
             </div>
           </div>
 
@@ -58,6 +84,9 @@ export default function ScoreBoard() {
                 className="h-full bg-game-blue transition-all duration-500"
                 style={{ width: `${blueProgress}%` }}
               />
+            </div>
+            <div className="flex flex-wrap gap-1 mt-1.5">
+              {bluePlayers.map(renderPlayer)}
             </div>
           </div>
         </div>

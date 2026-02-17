@@ -15,10 +15,13 @@ export default function GamePage() {
     leaveRoom, 
     restartGame, 
     endTurn,
-    lastGuessResult 
+    lastGuessResult,
+    renamePlayer,
   } = useSocketStore();
 
   const [showGameOver, setShowGameOver] = useState(false);
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [editName, setEditName] = useState('');
 
   // 监听游戏结束
   useEffect(() => {
@@ -83,12 +86,64 @@ export default function GamePage() {
               <p className="text-xs text-gray-500">房间: {roomId}</p>
             </div>
 
-            <button
-              onClick={handleLeave}
-              className="text-red-500 hover:text-red-700 text-sm"
-            >
-              退出
-            </button>
+            {/* 身份标识 + 昵称 */}
+            <div className="flex items-center gap-2">
+              {currentPlayer?.seatIndex !== null && currentPlayer?.seatIndex !== undefined ? (
+                <span className={`text-xs px-2 py-1 rounded-full font-bold ${
+                  isMyTurn ? 'animate-pulse ' : ''
+                }${
+                  isSpymaster
+                    ? (myTeam === 'red' 
+                        ? 'bg-red-500 text-white' 
+                        : 'bg-blue-500 text-white')
+                    : (myTeam === 'red'
+                        ? 'bg-red-100 text-red-700 border border-red-300'
+                        : 'bg-blue-100 text-blue-700 border border-blue-300')
+                }`}>
+                  {myTeam === 'red' ? '🔴' : '🔵'} {myTeam === 'red' ? '红' : '蓝'}队{isSpymaster ? '队长' : '队员'}
+                </span>
+              ) : (
+                <span className="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-500 border border-gray-300">
+                  👁 观战中
+                </span>
+              )}
+              {/* 昵称编辑 */}
+              {isEditingName ? (
+                <form onSubmit={async (e) => {
+                  e.preventDefault();
+                  if (editName.trim() && editName.trim() !== playerName) {
+                    const ok = await renamePlayer(editName.trim());
+                    if (ok) setIsEditingName(false);
+                  } else {
+                    setIsEditingName(false);
+                  }
+                }} className="flex items-center gap-1">
+                  <input
+                    autoFocus
+                    value={editName}
+                    onChange={e => setEditName(e.target.value)}
+                    maxLength={4}
+                    className="w-16 text-center text-xs border rounded px-1 py-0.5"
+                    onBlur={() => setIsEditingName(false)}
+                    onKeyDown={e => e.key === 'Escape' && setIsEditingName(false)}
+                  />
+                </form>
+              ) : (
+                <button
+                  onClick={() => { setEditName(playerName || ''); setIsEditingName(true); }}
+                  className="text-xs text-gray-400 hover:text-blue-500"
+                  title="点击修改昵称"
+                >
+                  {playerName} ✏️
+                </button>
+              )}
+              <button
+                onClick={handleLeave}
+                className="text-red-500 hover:text-red-700 text-sm"
+              >
+                退出
+              </button>
+            </div>
           </div>
         </div>
       </header>

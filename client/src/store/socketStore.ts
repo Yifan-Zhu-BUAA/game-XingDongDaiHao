@@ -54,6 +54,7 @@ interface SocketStore {
   guessCard: (cardIndex: number) => Promise<boolean>;
   endTurn: () => Promise<boolean>;
   updateMaxPlayers: (maxPlayers: number) => Promise<boolean>;
+  renamePlayer: (newName: string) => Promise<boolean>;
   clearError: () => void;
 }
 
@@ -195,6 +196,23 @@ export const useSocketStore = create<SocketStore>((set, get) => ({
           localStorage.setItem(LS_ROOM_ID, roomId);
         } else {
           set({ error: error || '加入房间失败' });
+        }
+        resolve(success);
+      });
+    });
+  },
+
+  renamePlayer: async (newName: string) => {
+    const socket = get().socket;
+    if (!socket) return false;
+    
+    return new Promise((resolve) => {
+      socket.emit('player:rename' as any, newName, (success: boolean, error?: string) => {
+        if (success) {
+          set({ playerName: newName });
+          localStorage.setItem(LS_PLAYER_NAME, newName);
+        } else if (error) {
+          set({ error });
         }
         resolve(success);
       });

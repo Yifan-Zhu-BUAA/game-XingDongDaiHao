@@ -11,6 +11,7 @@ import {
   leaveRoom,
   playerDisconnect,
   reconnectPlayer,
+  renamePlayer,
   takeSeat,
   leaveSeat,
   switchSeat,
@@ -159,6 +160,23 @@ io.on('connection', (socket) => {
     }
     
     callback(success, error);
+  });
+
+  // 修改昵称
+  socket.on('player:rename', (newName: string, callback: (success: boolean, error?: string) => void) => {
+    const roomId = getPlayerRoom(socket.id);
+    if (!roomId) {
+      callback(false, '不在房间中');
+      return;
+    }
+    
+    const result = renamePlayer(roomId, socket.id, newName);
+    
+    if (result.success && result.state) {
+      io.to(roomId).emit('game:state', result.state);
+    }
+    
+    callback(result.success, result.error);
   });
 
   // 修改人数

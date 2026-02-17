@@ -93,6 +93,7 @@ export interface ClientToServerEvents {
   'turn:end': (callback: (success: boolean, error?: string) => void) => void;
   'chat:send': (message: string) => void;
   'config:update': (config: Partial<RoomConfig>, callback: (success: boolean, error?: string) => void) => void;
+  'player:rename': (newName: string, callback: (success: boolean, error?: string) => void) => void;
 }
 
 export interface ChatMessage {

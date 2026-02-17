@@ -7,8 +7,10 @@ import PlayerList from '../components/PlayerList';
 export default function RoomPage() {
   const { roomId } = useParams<{ roomId: string }>();
   const navigate = useNavigate();
-  const { gameState, playerName, leaveRoom, startGame, updateMaxPlayers, joinRoom, isConnected, roomId: storeRoomId } = useSocketStore();
+  const { gameState, playerName, leaveRoom, startGame, updateMaxPlayers, joinRoom, isConnected, roomId: storeRoomId, renamePlayer } = useSocketStore();
   const [isJoining, setIsJoining] = useState(false);
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [editName, setEditName] = useState('');
 
   // 自动加入房间逻辑
   useEffect(() => {
@@ -101,6 +103,39 @@ export default function RoomPage() {
           <div className="text-center">
             <h1 className="text-xl font-bold text-gray-800">行动代号</h1>
             <p className="text-sm text-gray-500">房间号: {roomId}</p>
+            {/* 昵称编辑 */}
+            <div className="mt-1 flex items-center justify-center gap-1">
+              {isEditingName ? (
+                <form onSubmit={async (e) => {
+                  e.preventDefault();
+                  if (editName.trim() && editName.trim() !== playerName) {
+                    const ok = await renamePlayer(editName.trim());
+                    if (ok) setIsEditingName(false);
+                  } else {
+                    setIsEditingName(false);
+                  }
+                }} className="flex items-center gap-1">
+                  <input
+                    autoFocus
+                    value={editName}
+                    onChange={e => setEditName(e.target.value)}
+                    maxLength={4}
+                    className="w-20 text-center text-sm border rounded px-1 py-0.5"
+                    onBlur={() => setIsEditingName(false)}
+                    onKeyDown={e => e.key === 'Escape' && setIsEditingName(false)}
+                  />
+                  <button type="submit" className="text-green-500 text-xs">✓</button>
+                </form>
+              ) : (
+                <button
+                  onClick={() => { setEditName(playerName || ''); setIsEditingName(true); }}
+                  className="text-xs text-gray-400 hover:text-blue-500 flex items-center gap-0.5"
+                >
+                  <span className="text-gray-600 font-medium">{playerName}</span>
+                  <span>✏️</span>
+                </button>
+              )}
+            </div>
           </div>
           <button
             onClick={() => {
