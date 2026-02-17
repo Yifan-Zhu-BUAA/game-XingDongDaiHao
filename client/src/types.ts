@@ -20,6 +20,7 @@ export interface Player {
   isHost: boolean;
   team?: Team;
   isSpymaster: boolean;
+  isDoubleAgent?: boolean;
   isOnline: boolean;
 }
 

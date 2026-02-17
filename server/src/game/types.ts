@@ -20,6 +20,7 @@ export interface Player {
   isHost: boolean;
   team?: Team;
   isSpymaster: boolean;
+  isDoubleAgent?: boolean; // 双面间谍（3人模式）
   isOnline: boolean; // 是否在线
 }
 

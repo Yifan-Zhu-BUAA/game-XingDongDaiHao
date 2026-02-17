@@ -66,7 +66,8 @@ export default function GamePage() {
   const isHost = currentPlayer?.isHost || false;
   const isSpymaster = currentPlayer?.isSpymaster || false;
   const myTeam = currentPlayer?.team;
-  const isMyTurn = myTeam === gameState.currentTeam;
+  const isDoubleAgent = currentPlayer?.isDoubleAgent || false;
+  const isMyTurn = isDoubleAgent || myTeam === gameState.currentTeam;
 
   return (
     <div className="min-h-screen bg-gray-100">
@@ -89,19 +90,25 @@ export default function GamePage() {
             {/* 身份标识 + 昵称 */}
             <div className="flex items-center gap-2">
               {currentPlayer?.seatIndex !== null && currentPlayer?.seatIndex !== undefined ? (
-                <span className={`text-xs px-2 py-1 rounded-full font-bold ${
-                  isMyTurn ? 'animate-pulse ' : ''
-                }${
-                  isSpymaster
-                    ? (myTeam === 'red' 
-                        ? 'bg-red-500 text-white' 
-                        : 'bg-blue-500 text-white')
-                    : (myTeam === 'red'
-                        ? 'bg-red-100 text-red-700 border border-red-300'
-                        : 'bg-blue-100 text-blue-700 border border-blue-300')
-                }`}>
-                  {myTeam === 'red' ? '🔴' : '🔵'} {myTeam === 'red' ? '红' : '蓝'}队{isSpymaster ? '队长' : '队员'}
-                </span>
+                isDoubleAgent ? (
+                  <span className="text-xs px-2 py-1 rounded-full font-bold bg-gradient-to-r from-red-500 to-blue-500 text-white animate-pulse">
+                    🕵️ 双面间谍
+                  </span>
+                ) : (
+                  <span className={`text-xs px-2 py-1 rounded-full font-bold ${
+                    isMyTurn ? 'animate-pulse ' : ''
+                  }${
+                    isSpymaster
+                      ? (myTeam === 'red' 
+                          ? 'bg-red-500 text-white' 
+                          : 'bg-blue-500 text-white')
+                      : (myTeam === 'red'
+                          ? 'bg-red-100 text-red-700 border border-red-300'
+                          : 'bg-blue-100 text-blue-700 border border-blue-300')
+                  }`}>
+                    {myTeam === 'red' ? '🔴' : '🔵'} {myTeam === 'red' ? '红' : '蓝'}队{isSpymaster ? '队长' : '队员'}
+                  </span>
+                )
               ) : (
                 <span className="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-500 border border-gray-300">
                   👁 观战中
@@ -182,7 +189,7 @@ export default function GamePage() {
                   isMyTurn ? 'text-green-800' : 'text-gray-600'
                 }`}>
                   {isMyTurn 
-                    ? `轮到${myTeam === 'red' ? '红' : '蓝'}队猜词！` 
+                    ? `轮到${gameState.currentTeam === 'red' ? '红' : '蓝'}队猜词！${isDoubleAgent ? '（你是双面间谍）' : ''}` 
                     : `等待${gameState.currentTeam === 'red' ? '红' : '蓝'}队猜词...`}
                 </p>
                 {isMyTurn && gameState.currentClue && (

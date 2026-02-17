@@ -461,8 +461,14 @@ export function endTurnByPlayer(roomId: string, socketId: string):
     return { success: false, error: '你不是游戏玩家' };
   }
   
+  // 双面间谍在任意队伍回合都可结束
+  const effectiveTeam = player.isDoubleAgent ? room.currentTeam : player.team;
+  if (!effectiveTeam) {
+    return { success: false, error: '你不是游戏玩家' };
+  }
+  
   try {
-    const newState = endTurn(room, player.team);
+    const newState = endTurn(room, effectiveTeam);
     rooms.set(roomId, newState);
     return { success: true, state: newState };
   } catch (error) {

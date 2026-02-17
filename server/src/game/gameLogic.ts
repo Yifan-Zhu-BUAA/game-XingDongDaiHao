@@ -111,7 +111,12 @@ export function startGame(state: GameState): GameState {
   // 确定先手（牌多的一方先手）
   const redCount = cards.filter(c => c.type === 'red').length;
   const blueCount = cards.filter(c => c.type === 'blue').length;
-  const firstTeam: Team = redCount > blueCount ? 'red' : 'blue';
+  let firstTeam: Team = redCount > blueCount ? 'red' : 'blue';
+  
+  // 2人模式：两人都在红队，必须红队先手
+  if (state.maxPlayers === 2) {
+    firstTeam = 'red';
+  }
   
   return {
     ...state,
@@ -137,35 +142,37 @@ export function startGame(state: GameState): GameState {
 function assignTeamsAndRoles(players: Player[], maxPlayers: number): Player[] {
   const newPlayers = [...players];
   
-  // 根据人数确定队伍配置
-  // 4人：红队长(1)、蓝队长(2)、红队员(3)、蓝队员(4)
-  // 其他人数类似分配
-  
   switch (maxPlayers) {
     case 2:
-      // 2人：玩家1红队长，玩家2猜红队词（每回合需主动翻一张蓝牌）
+      // 2人模式：玩家1红队长，玩家2红队员
+      // 蓝队无人 → 每回合自动翻一张蓝牌形成时间压力
       newPlayers[0].team = 'red';
       newPlayers[0].isSpymaster = true;
+      newPlayers[0].isDoubleAgent = false;
       newPlayers[1].team = 'red';
       newPlayers[1].isSpymaster = false;
+      newPlayers[1].isDoubleAgent = false;
       break;
       
     case 3:
-      // 3人：玩家1红队长，玩家2蓝队长，玩家3双面间谍
+      // 3人模式：玩家1红队长，玩家2蓝队长，玩家3双面间谍（两队回合都可猜）
       newPlayers[0].team = 'red';
       newPlayers[0].isSpymaster = true;
+      newPlayers[0].isDoubleAgent = false;
       newPlayers[1].team = 'blue';
       newPlayers[1].isSpymaster = true;
-      newPlayers[2].team = 'red'; // 双面间谍主要猜红队，但会辅助
+      newPlayers[1].isDoubleAgent = false;
+      newPlayers[2].team = 'red';
       newPlayers[2].isSpymaster = false;
+      newPlayers[2].isDoubleAgent = true; // 双面间谍：红蓝回合都可猜牌
       break;
       
     case 4:
     default:
       // 4人及以上标准模式
-      // 1号红队长，2号蓝队长，3号红队员，4号蓝队员
       for (let i = 0; i < newPlayers.length; i++) {
         const seatNum = i + 1;
+        newPlayers[i].isDoubleAgent = false;
         if (seatNum === 1) {
           newPlayers[i].team = 'red';
           newPlayers[i].isSpymaster = true;
@@ -179,7 +186,6 @@ function assignTeamsAndRoles(players: Player[], maxPlayers: number): Player[] {
           newPlayers[i].team = 'blue';
           newPlayers[i].isSpymaster = false;
         } else {
-          // 5-8人，轮流分配队伍
           const teamIndex = (seatNum - 1) % 2;
           newPlayers[i].team = teamIndex === 0 ? 'red' : 'blue';
           newPlayers[i].isSpymaster = false;
@@ -189,6 +195,60 @@ function assignTeamsAndRoles(players: Player[], maxPlayers: number): Player[] {
   }
   
   return newPlayers;
+}
+
+// 回合切换（处理2人模式自动翻牌）
+function performTurnSwitch(state: GameState): GameState {
+  const nextTeam: Team = state.currentTeam === 'red' ? 'blue' : 'red';
+  
+  // 检查对方队伍是否有猜牌人（非队长的队员，或双面间谍）
+  const hasNextTeamGuesser = state.players.some(
+    p => p.seatIndex !== null && !p.isSpymaster && (p.team === nextTeam || p.isDoubleAgent)
+  );
+  
+  if (hasNextTeamGuesser) {
+    // 正常切换回合
+    return {
+      ...state,
+      currentTeam: nextTeam,
+      currentClue: null,
+      remainingGuesses: 0,
+    };
+  }
+  
+  // 2人模式：对方无人猜牌，自动翻一张对方颜色的牌，保持当前队伍
+  const newCards = [...state.cards];
+  const candidates = newCards.filter(c => !c.revealed && c.type === nextTeam);
+  
+  let updatedState: GameState = {
+    ...state,
+    currentClue: null,
+    remainingGuesses: 0,
+  };
+  
+  if (candidates.length > 0) {
+    const pick = candidates[Math.floor(Math.random() * candidates.length)];
+    newCards[pick.id] = { ...pick, revealed: true };
+    updatedState.cards = newCards;
+    
+    if (nextTeam === 'red') updatedState.redScore++;
+    else updatedState.blueScore++;
+    
+    // 自动翻牌可能导致对方获胜
+    const score = nextTeam === 'red' ? updatedState.redScore : updatedState.blueScore;
+    const total = nextTeam === 'red' ? updatedState.redTotal : updatedState.blueTotal;
+    if (score >= total) {
+      return {
+        ...updatedState,
+        phase: 'ended',
+        winner: nextTeam,
+        endedAt: Date.now(),
+      };
+    }
+  }
+  
+  // 保持当前队伍回合（红队继续）
+  return updatedState;
 }
 
 // 给出线索
@@ -231,7 +291,10 @@ export function guessCard(state: GameState, player: Player, cardIndex: number):
     throw new Error('你没有队伍');
   }
   
-  if (state.currentTeam !== player.team) {
+  // 双面间谍在两队回合都可猜牌，以当前队伍身份行动
+  const effectiveTeam: Team = player.isDoubleAgent ? state.currentTeam : player.team;
+  
+  if (state.currentTeam !== effectiveTeam) {
     throw new Error('不是你的回合');
   }
   
@@ -243,8 +306,6 @@ export function guessCard(state: GameState, player: Player, cardIndex: number):
   if (card.revealed) {
     throw new Error('这张卡已经被翻开了');
   }
-  
-  // 新规则：没有猜测次数限制
   
   // 翻开卡片
   const newCards = [...state.cards];
@@ -258,14 +319,13 @@ export function guessCard(state: GameState, player: Player, cardIndex: number):
     cardWord: card.word,
     cardType: card.type,
     timestamp: Date.now(),
-    team: player.team,
+    team: effectiveTeam,
   };
   
   let newState: GameState = {
     ...state,
     cards: newCards,
     guessHistory: [...state.guessHistory, guessRecord],
-    // 保持无限制状态
     remainingGuesses: -1,
   };
   
@@ -273,98 +333,48 @@ export function guessCard(state: GameState, player: Player, cardIndex: number):
   let gameEnded = false;
   let winner: Team | null = null;
   
-  // 处理结果
   switch (card.type) {
     case 'black':
       // 猜中黑牌，当前队伍直接输
       gameEnded = true;
-      winner = player.team === 'red' ? 'blue' : 'red';
-      newState = {
-        ...newState,
-        phase: 'ended',
-        winner,
-        endedAt: Date.now(),
-      };
+      winner = effectiveTeam === 'red' ? 'blue' : 'red';
+      newState = { ...newState, phase: 'ended', winner, endedAt: Date.now() };
       break;
       
     case 'red':
       newState.redScore++;
-      if (player.team === 'red') {
-        // 猜对本队词，继续猜
+      if (newState.redScore >= newState.redTotal) {
+        gameEnded = true;
+        winner = 'red';
+        newState = { ...newState, phase: 'ended', winner, endedAt: Date.now() };
+      } else if (effectiveTeam === 'red') {
         continueTurn = true;
-        // 检查红队是否获胜
-        if (newState.redScore >= newState.redTotal) {
-          gameEnded = true;
-          winner = 'red';
-          newState = {
-            ...newState,
-            phase: 'ended',
-            winner,
-            endedAt: Date.now(),
-          };
-        }
       } else {
-        // 猜错对方词，回合结束
-        continueTurn = false;
-        newState.currentTeam = 'blue';
-        newState.currentClue = null;
-        newState.remainingGuesses = 0;
-        // 检查红队是否因此获胜（红队已经猜完）
-        if (newState.redScore >= newState.redTotal) {
-          gameEnded = true;
-          winner = 'red';
-          newState = {
-            ...newState,
-            phase: 'ended',
-            winner,
-            endedAt: Date.now(),
-          };
-        }
+        // 猜错对方词，切换回合
+        newState = performTurnSwitch(newState);
+        if (newState.phase === 'ended') { gameEnded = true; winner = newState.winner; }
       }
       break;
       
     case 'blue':
       newState.blueScore++;
-      if (player.team === 'blue') {
-        // 猜对本队词，继续猜
+      if (newState.blueScore >= newState.blueTotal) {
+        gameEnded = true;
+        winner = 'blue';
+        newState = { ...newState, phase: 'ended', winner, endedAt: Date.now() };
+      } else if (effectiveTeam === 'blue') {
         continueTurn = true;
-        // 检查蓝队是否获胜
-        if (newState.blueScore >= newState.blueTotal) {
-          gameEnded = true;
-          winner = 'blue';
-          newState = {
-            ...newState,
-            phase: 'ended',
-            winner,
-            endedAt: Date.now(),
-          };
-        }
       } else {
-        // 猜错对方词，回合结束
-        continueTurn = false;
-        newState.currentTeam = 'red';
-        newState.currentClue = null;
-        newState.remainingGuesses = 0;
-        // 检查蓝队是否因此获胜
-        if (newState.blueScore >= newState.blueTotal) {
-          gameEnded = true;
-          winner = 'blue';
-          newState = {
-            ...newState,
-            phase: 'ended',
-            winner,
-            endedAt: Date.now(),
-          };
-        }
+        // 猜错对方词，切换回合
+        newState = performTurnSwitch(newState);
+        if (newState.phase === 'ended') { gameEnded = true; winner = newState.winner; }
       }
       break;
       
     case 'white':
-      // 猜中白牌，回合结束
-      continueTurn = false;
-      newState.currentTeam = player.team === 'red' ? 'blue' : 'red';
-      newState.currentClue = null;
-      newState.remainingGuesses = 0;
+      // 猜中白牌，切换回合
+      newState = performTurnSwitch(newState);
+      if (newState.phase === 'ended') { gameEnded = true; winner = newState.winner; }
       break;
   }
   
@@ -389,12 +399,7 @@ export function endTurn(state: GameState, team: Team): GameState {
     throw new Error('不是你的回合');
   }
   
-  return {
-    ...state,
-    currentTeam: team === 'red' ? 'blue' : 'red',
-    currentClue: null,
-    remainingGuesses: 0,
-  };
+  return performTurnSwitch(state);
 }
 
 // 重新开始游戏
