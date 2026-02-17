@@ -13,12 +13,14 @@ export interface Card {
 
 export interface Player {
   id: string;
+  clientId: string; // 客户端唯一标识（持久化在浏览器中）
   name: string;
   socketId: string;
   seatIndex: number | null; // null = 观战
   isHost: boolean;
   team?: Team;
   isSpymaster: boolean;
+  isOnline: boolean; // 是否在线
 }
 
 export interface Clue {

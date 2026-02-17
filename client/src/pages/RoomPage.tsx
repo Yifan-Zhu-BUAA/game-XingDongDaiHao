@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useSocketStore } from '../store/socketStore';
 import SeatPanel from '../components/SeatPanel';
@@ -7,15 +7,31 @@ import PlayerList from '../components/PlayerList';
 export default function RoomPage() {
   const { roomId } = useParams<{ roomId: string }>();
   const navigate = useNavigate();
-  const { gameState, playerName, leaveRoom, startGame, updateMaxPlayers } = useSocketStore();
+  const { gameState, playerName, leaveRoom, startGame, updateMaxPlayers, joinRoom, isConnected, roomId: storeRoomId } = useSocketStore();
+  const [isJoining, setIsJoining] = useState(false);
 
-  // 如果没有游戏状态，返回首页
+  // 自动加入房间逻辑
   useEffect(() => {
-    if (!gameState && roomId) {
-      // 可能页面刷新了，需要重新加入
-      // 这里可以添加重新加入逻辑
+    // 如果已经通过自动重连加入了（storeRoomId 与 URL 匹配且有 gameState），跳过
+    if (gameState && storeRoomId === roomId) return;
+    
+    // 如果已连接、有房间ID、没有游戏状态、不在加入中、有昵称
+    if (isConnected && roomId && !gameState && !isJoining && playerName) {
+      setIsJoining(true);
+      joinRoom(roomId, playerName).then((success) => {
+        if (!success) {
+          // 加入失败，返回首页
+          navigate('/');
+        }
+        setIsJoining(false);
+      });
     }
-  }, [gameState, roomId]);
+    
+    // 如果用户没有昵称，重定向到首页输入昵称
+    if (isConnected && roomId && !playerName) {
+      navigate('/', { state: { redirectRoomId: roomId } });
+    }
+  }, [isConnected, gameState, roomId, playerName, joinRoom, navigate, isJoining, storeRoomId]);
 
   // 监听游戏开始
   useEffect(() => {

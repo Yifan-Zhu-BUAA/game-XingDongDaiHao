@@ -1,3 +1,4 @@
+/// <reference types="vite/client" />
 import { create } from 'zustand';
 import { io, Socket } from 'socket.io-client';
 import { GameState, Player, Clue, GuessResult, Team, ChatMessage } from '../types';
@@ -60,27 +61,54 @@ interface SocketStore {
 const SERVER_URL = import.meta.env.VITE_SERVER_URL || 
   (import.meta.env.PROD ? window.location.origin : 'http://localhost:3000');
 
+// localStorage key常量
+const LS_PLAYER_NAME = 'codenames_playerName';
+const LS_ROOM_ID = 'codenames_roomId';
+const LS_CLIENT_ID = 'codenames_clientId';
+
+// 获取或生成 clientId
+function getClientId(): string {
+  let clientId = localStorage.getItem(LS_CLIENT_ID);
+  if (!clientId) {
+    clientId = crypto.randomUUID();
+    localStorage.setItem(LS_CLIENT_ID, clientId);
+  }
+  return clientId;
+}
+
 export const useSocketStore = create<SocketStore>((set, get) => ({
   socket: null,
   isConnected: false,
   gameState: null,
   playerId: null,
-  playerName: null,
-  roomId: null,
+  playerName: localStorage.getItem(LS_PLAYER_NAME) || null,
+  roomId: localStorage.getItem(LS_ROOM_ID) || null,
   error: null,
   lastGuessResult: null,
 
   connect: () => {
+    const clientId = getClientId();
+
     const socket = io(SERVER_URL, {
       transports: ['websocket', 'polling'],
       reconnection: true,
-      reconnectionAttempts: 5,
+      reconnectionAttempts: Infinity,
       reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+      auth: { clientId },
     });
 
     socket.on('connect', () => {
-      console.log('Connected to server');
+      console.log('Connected to server, clientId:', clientId);
       set({ isConnected: true, error: null });
+    });
+
+    // 服务端自动重连成功通知
+    (socket as any).on('reconnected', (data: { roomId: string; playerName: string }) => {
+      console.log('Auto-reconnected to room:', data.roomId, 'as:', data.playerName);
+      set({ roomId: data.roomId, playerName: data.playerName });
+      localStorage.setItem(LS_ROOM_ID, data.roomId);
+      localStorage.setItem(LS_PLAYER_NAME, data.playerName);
     });
 
     socket.on('disconnect', () => {
@@ -149,6 +177,9 @@ export const useSocketStore = create<SocketStore>((set, get) => ({
       socket.emit('room:join', roomId, playerName, (success, error) => {
         if (success) {
           set({ roomId, playerName, error: null });
+          // 保存到 localStorage
+          localStorage.setItem(LS_PLAYER_NAME, playerName);
+          localStorage.setItem(LS_ROOM_ID, roomId);
         } else {
           set({ error: error || '加入房间失败' });
         }
@@ -161,6 +192,8 @@ export const useSocketStore = create<SocketStore>((set, get) => ({
     const { socket } = get();
     if (socket) {
       socket.emit('room:leave');
+      // 清除 localStorage 房间信息（保留 clientId 和 playerName）
+      localStorage.removeItem(LS_ROOM_ID);
       set({ gameState: null, roomId: null, playerId: null });
     }
   },

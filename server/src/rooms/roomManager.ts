@@ -4,6 +4,15 @@ import { createGameState, startGame, giveClue, guessCard, endTurn, restartGame, 
 // 内存中的房间存储
 const rooms: Map<string, GameState> = new Map();
 const playerToRoom: Map<string, string> = new Map(); // socketId -> roomId
+const clientToRoom: Map<string, string> = new Map(); // clientId -> roomId
+
+// 房间最大存活时间（12小时）
+const ROOM_MAX_LIFETIME = 12 * 60 * 60 * 1000;
+
+// 定期清理过期房间（每10分钟检查一次）
+setInterval(() => {
+  cleanupExpiredRooms();
+}, 10 * 60 * 1000);
 
 // 获取或创建房间
 export function getOrCreateRoom(roomId: string): GameState {
@@ -25,57 +34,102 @@ export function deleteRoom(roomId: string): void {
     // 清理玩家映射
     room.players.forEach(player => {
       playerToRoom.delete(player.socketId);
+      clientToRoom.delete(player.clientId);
     });
     rooms.delete(roomId);
+    console.log(`Room ${roomId} deleted`);
   }
 }
 
-// 玩家加入房间
-export function joinRoom(roomId: string, socketId: string, playerName: string): 
+// 通过 clientId 查找玩家所在房间
+export function findPlayerByClientId(clientId: string): { roomId: string; player: Player; state: GameState } | null {
+  const roomId = clientToRoom.get(clientId);
+  if (!roomId) return null;
+  
+  const room = rooms.get(roomId);
+  if (!room) {
+    clientToRoom.delete(clientId);
+    return null;
+  }
+  
+  const player = room.players.find(p => p.clientId === clientId);
+  if (!player) {
+    clientToRoom.delete(clientId);
+    return null;
+  }
+  
+  return { roomId, player, state: room };
+}
+
+// 玩家重连（通过 clientId）
+export function reconnectPlayer(clientId: string, socketId: string): 
+  { success: boolean; roomId?: string; player?: Player; state?: GameState } {
+  
+  const found = findPlayerByClientId(clientId);
+  if (!found) {
+    return { success: false };
+  }
+  
+  const { roomId, player, state } = found;
+  
+  console.log(`Player ${player.name} reconnecting to room ${roomId} via clientId`);
+  
+  // 清除旧的 socketId 映射
+  playerToRoom.delete(player.socketId);
+  
+  // 更新 socketId 和在线状态
+  player.socketId = socketId;
+  player.isOnline = true;
+  playerToRoom.set(socketId, roomId);
+  
+  return { success: true, roomId, player, state };
+}
+
+// 玩家加入房间（全新加入）
+export function joinRoom(roomId: string, socketId: string, playerName: string, clientId: string): 
   { success: boolean; player?: Player; error?: string; state?: GameState } {
   
   const room = getOrCreateRoom(roomId);
   
-  // 检查游戏是否已开始
-  if (room.phase !== 'waiting') {
-    // 游戏已开始，作为观战者加入
-    const player: Player = {
-      id: generateId(),
-      name: playerName,
-      socketId,
-      seatIndex: null,
-      isHost: false,
-    };
-    
-    room.players.push(player);
+  // 检查是否有同 clientId 的玩家已在房间（不应该走到这里，但防御性检查）
+  const existingByClientId = room.players.find(p => p.clientId === clientId);
+  if (existingByClientId) {
+    // 直接恢复
+    playerToRoom.delete(existingByClientId.socketId);
+    existingByClientId.socketId = socketId;
+    existingByClientId.isOnline = true;
+    existingByClientId.name = playerName; // 允许更新昵称
     playerToRoom.set(socketId, roomId);
-    
-    return { success: true, player, state: room };
+    return { success: true, player: existingByClientId, state: room };
   }
   
-  // 检查是否已有同名玩家
-  const existingPlayer = room.players.find(p => p.name === playerName);
-  if (existingPlayer) {
+  // 检查是否已有同名在线玩家
+  const existingByName = room.players.find(p => p.name === playerName && p.isOnline);
+  if (existingByName) {
     return { success: false, error: '该昵称已被使用' };
   }
   
-  // 创建新玩家
+  // 全新玩家加入
   const player: Player = {
     id: generateId(),
+    clientId,
     name: playerName,
     socketId,
     seatIndex: null,
-    isHost: room.players.length === 0, // 第一个玩家成为房主
+    isHost: room.players.length === 0,
+    isSpymaster: false,
+    isOnline: true,
   };
   
   room.players.push(player);
   playerToRoom.set(socketId, roomId);
+  clientToRoom.set(clientId, roomId);
   
   return { success: true, player, state: room };
 }
 
-// 玩家离开房间
-export function leaveRoom(socketId: string): { roomId?: string; playerId?: string; state?: GameState; deleted?: boolean } {
+// 玩家断线（仅标记离线，不移除，房间存在期间随时可重连）
+export function playerDisconnect(socketId: string): { roomId?: string; playerId?: string; state?: GameState } {
   const roomId = playerToRoom.get(socketId);
   if (!roomId) {
     return {};
@@ -87,26 +141,56 @@ export function leaveRoom(socketId: string): { roomId?: string; playerId?: strin
     return {};
   }
   
+  const player = room.players.find(p => p.socketId === socketId);
+  if (!player) {
+    playerToRoom.delete(socketId);
+    return {};
+  }
+  
+  // 标记为离线（不移除，随时可重连）
+  player.isOnline = false;
+  playerToRoom.delete(socketId);
+  console.log(`Player ${player.name} marked offline in room ${roomId}`);
+  
+  return { roomId, playerId: player.id, state: room };
+}
+
+// 玩家主动离开房间（清除身份，不可重连）
+export function leaveRoom(socketId: string, clientId?: string): { roomId?: string; playerId?: string; state?: GameState; deleted?: boolean } {
+  const roomId = playerToRoom.get(socketId);
+  if (!roomId) {
+    return {};
+  }
+  
+  const room = rooms.get(roomId);
+  if (!room) {
+    playerToRoom.delete(socketId);
+    if (clientId) clientToRoom.delete(clientId);
+    return {};
+  }
+  
   const playerIndex = room.players.findIndex(p => p.socketId === socketId);
   if (playerIndex === -1) {
     playerToRoom.delete(socketId);
+    if (clientId) clientToRoom.delete(clientId);
     return {};
   }
   
   const player = room.players[playerIndex];
   
-  // 如果玩家在游戏座位上，重置座位
-  if (player.seatIndex !== null && room.phase === 'waiting') {
-    // 只有等待阶段才释放座位
-  }
-  
   // 移除玩家
   room.players.splice(playerIndex, 1);
   playerToRoom.delete(socketId);
+  clientToRoom.delete(player.clientId);
   
   // 如果房主离开，转移房主
   if (player.isHost && room.players.length > 0) {
-    room.players[0].isHost = true;
+    const onlinePlayer = room.players.find(p => p.isOnline);
+    if (onlinePlayer) {
+      onlinePlayer.isHost = true;
+    } else {
+      room.players[0].isHost = true;
+    }
   }
   
   // 如果房间空了，删除房间
@@ -397,12 +481,12 @@ export function getRoomPlayerSockets(roomId: string): string[] {
   return room.players.map(p => p.socketId);
 }
 
-// 清理空闲房间（可以定时调用）
-export function cleanupIdleRooms(maxIdleTime: number = 24 * 60 * 60 * 1000): void {
+// 清理过期房间（12小时自动过期）
+export function cleanupExpiredRooms(): void {
   const now = Date.now();
   for (const [roomId, room] of rooms.entries()) {
-    // 如果房间已结束或创建时间超过最大空闲时间
-    if (room.phase === 'ended' || now - room.createdAt > maxIdleTime) {
+    if (now - room.createdAt > ROOM_MAX_LIFETIME) {
+      console.log(`Room ${roomId} expired after 12 hours, deleting`);
       deleteRoom(roomId);
     }
   }

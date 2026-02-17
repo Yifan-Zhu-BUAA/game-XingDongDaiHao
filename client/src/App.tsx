@@ -1,13 +1,14 @@
 import { useEffect } from 'react';
-import { Routes, Route, useLocation } from 'react-router-dom';
+import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import { useSocketStore } from './store/socketStore';
 import HomePage from './pages/HomePage';
 import RoomPage from './pages/RoomPage';
 import GamePage from './pages/GamePage';
 
 function App() {
+  const navigate = useNavigate();
   const location = useLocation();
-  const { connect, disconnect, isConnected, error, clearError } = useSocketStore();
+  const { connect, disconnect, isConnected, error, clearError, gameState, roomId } = useSocketStore();
 
   // 连接 Socket.io
   useEffect(() => {
@@ -16,6 +17,20 @@ function App() {
       disconnect();
     };
   }, [connect, disconnect]);
+
+  // 自动恢复页面：重连成功后，根据游戏状态跳转到正确页面
+  useEffect(() => {
+    if (!isConnected || !gameState || !roomId) return;
+    
+    // 只在首页时自动跳转（避免干扰正常导航）
+    if (location.pathname === '/') {
+      if (gameState.phase === 'playing' || gameState.phase === 'ended') {
+        navigate(`/game/${roomId}`);
+      } else {
+        navigate(`/room/${roomId}`);
+      }
+    }
+  }, [isConnected, gameState, roomId, navigate, location.pathname]);
 
   // 自动清除错误提示
   useEffect(() => {

@@ -5,10 +5,12 @@ import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-import { ClientToServerEvents, ServerToClientEvents } from './game/types.js';
+import { ClientToServerEvents, ServerToClientEvents, CardType } from './game/types.js';
 import {
   joinRoom,
   leaveRoom,
+  playerDisconnect,
+  reconnectPlayer,
   takeSeat,
   leaveSeat,
   switchSeat,
@@ -58,20 +60,37 @@ if (process.env.NODE_ENV === 'production') {
 
 // Socket.io连接处理
 io.on('connection', (socket) => {
-  console.log('Player connected:', socket.id);
+  const clientId = socket.handshake.auth?.clientId as string;
+  console.log('Player connected:', socket.id, 'clientId:', clientId);
+
+  // 自动重连：如果 clientId 对应有离线玩家，自动恢复
+  if (clientId) {
+    const reconnResult = reconnectPlayer(clientId, socket.id);
+    if (reconnResult.success && reconnResult.roomId && reconnResult.state) {
+      socket.join(reconnResult.roomId);
+      // 发送当前游戏状态给重连的玩家
+      socket.emit('game:state', reconnResult.state);
+      // 通知房间内其他玩家状态更新（玩家上线了）
+      socket.to(reconnResult.roomId).emit('game:state', reconnResult.state);
+      // 通知客户端重连信息
+      socket.emit('reconnected' as any, {
+        roomId: reconnResult.roomId,
+        playerName: reconnResult.player!.name,
+      });
+      console.log(`Player ${reconnResult.player!.name} auto-reconnected to room ${reconnResult.roomId}`);
+    }
+  }
 
   // 加入房间
   socket.on('room:join', (roomId, playerName, callback) => {
-    const { success, player, error, state } = joinRoom(roomId, socket.id, playerName);
+    const { success, player, error, state } = joinRoom(roomId, socket.id, playerName, clientId);
     
     if (success && player && state) {
       socket.join(roomId);
       
       // 通知其他玩家
       socket.to(roomId).emit('player:joined', player);
-      
-      // 发送当前游戏状态
-      socket.emit('game:state', state);
+      io.to(roomId).emit('game:state', state);
       
       console.log(`Player ${playerName} joined room ${roomId}`);
     }
@@ -215,7 +234,7 @@ io.on('connection', (socket) => {
       io.to(roomId).emit('game:state', state);
       io.to(roomId).emit('guess:result', {
         success: result.continueTurn,
-        cardType: result.cardType,
+        cardType: result.cardType as CardType,
         cardWord: state.cards[cardIndex].word,
         continueTurn: result.continueTurn,
         gameEnded: result.gameEnded,
@@ -265,15 +284,14 @@ io.on('connection', (socket) => {
     callback(success, error);
   });
 
-  // 断开连接
+  // 断开连接（标记离线，不立即移除）
   socket.on('disconnect', () => {
     console.log('Player disconnected:', socket.id);
     
-    const result = leaveRoom(socket.id);
+    const result = playerDisconnect(socket.id);
     
-    if (result.roomId && result.playerId && !result.deleted) {
-      // 通知其他玩家
-      socket.to(result.roomId).emit('player:left', result.playerId);
+    if (result.roomId && result.playerId) {
+      // 通知其他玩家（发送更新后的状态，包含离线标记）
       if (result.state) {
         socket.to(result.roomId).emit('game:state', result.state);
       }

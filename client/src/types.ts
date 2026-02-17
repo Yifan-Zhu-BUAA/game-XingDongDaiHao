@@ -13,12 +13,14 @@ export interface Card {
 
 export interface Player {
   id: string;
+  clientId: string;
   name: string;
   socketId: string;
   seatIndex: number | null;
   isHost: boolean;
   team?: Team;
   isSpymaster: boolean;
+  isOnline: boolean;
 }
 
 export interface Clue {

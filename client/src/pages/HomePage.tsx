@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useSocketStore } from '../store/socketStore';
 
 // 生成随机房间ID
@@ -23,27 +23,39 @@ function generateRandomName(): string {
 
 export default function HomePage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { joinRoom, isConnected } = useSocketStore();
   const [roomId, setRoomId] = useState('');
   const [playerName, setPlayerName] = useState('');
   const [isJoining, setIsJoining] = useState(false);
+  
+  // 获取从其他页面传来的房间号（用于邀请链接场景）
+  const redirectRoomId = (location.state as { redirectRoomId?: string })?.redirectRoomId;
+  
+  // 如果有重定向房间号，显示提示
+  useEffect(() => {
+    if (redirectRoomId) {
+      setRoomId(redirectRoomId);
+    }
+  }, [redirectRoomId]);
 
-  // 创建房间
+  // 创建房间或进入邀请房间
   const handleCreateRoom = async () => {
     if (!isConnected) {
       alert('请等待连接到服务器');
       return;
     }
 
-    const newRoomId = generateRoomId();
     const name = playerName.trim() || generateRandomName();
-    
     setIsJoining(true);
-    const success = await joinRoom(newRoomId, name);
+    
+    // 如果有邀请房间号，直接进入；否则创建新房间
+    const targetRoomId = redirectRoomId || generateRoomId();
+    const success = await joinRoom(targetRoomId, name);
     setIsJoining(false);
 
     if (success) {
-      navigate(`/room/${newRoomId}`);
+      navigate(`/room/${targetRoomId}`);
     }
   };
 
@@ -89,6 +101,18 @@ export default function HomePage() {
         <p className="text-gray-600">在线多人猜词游戏</p>
       </div>
 
+      {/* 邀请提示 */}
+      {redirectRoomId && (
+        <div className="w-full max-w-md mb-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <p className="text-blue-800 text-center">
+            你收到了房间 <strong>{redirectRoomId}</strong> 的邀请
+          </p>
+          <p className="text-blue-600 text-sm text-center mt-1">
+            输入昵称后即可加入房间
+          </p>
+        </div>
+      )}
+
       {/* 昵称输入 */}
       <div className="w-full max-w-md mb-8">
         <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -109,13 +133,13 @@ export default function HomePage() {
 
       {/* 操作按钮 */}
       <div className="w-full max-w-md space-y-4">
-        {/* 创建房间 */}
+        {/* 创建房间 / 进入邀请房间 */}
         <button
           onClick={handleCreateRoom}
           disabled={isJoining || !isConnected}
           className="w-full bg-gradient-to-r from-game-red to-game-red-dark text-white py-4 rounded-lg font-semibold text-lg shadow-md hover:shadow-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {isJoining ? '加入中...' : '👥 创建房间'}
+          {isJoining ? '加入中...' : redirectRoomId ? `👥 进入房间 ${redirectRoomId}` : '👥 创建房间'}
         </button>
 
         {/* 分割线 */}
