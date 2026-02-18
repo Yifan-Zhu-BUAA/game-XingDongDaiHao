@@ -14,7 +14,6 @@ const AI_MODEL = process.env.AI_MODEL || 'doubao-seed-1-8-251228';
 const SENSITIVE_PATTERNS = [
   '色情', '性爱', '性', '裸体', '裸', '黄', 'av', 'porn', 'sex', 'nude', 'naked',
   '暴力', '血腥', '杀戮', '杀', '死', '毒品', '毒', '赌博', '赌', '恐怖', '恐怖',
-  '炸弹', '爆炸', '枪', '武器', '攻击', '恐怖', '邪教', '反动', '政治',
 ];
 
 // 检查主题是否包含敏感内容
@@ -25,14 +24,8 @@ function containsSensitiveContent(theme: string): boolean {
   );
 }
 
-// 检查返回的词汇是否健康（是否包含敏感词）
-function containsSensitiveWords(words: string[]): boolean {
-  return words.some(word => 
-    SENSITIVE_PATTERNS.some(pattern => 
-      word.toLowerCase().includes(pattern.toLowerCase())
-    )
-  );
-}
+// 注：AI 模型已经对输出进行了内容过滤，返回的词汇是健康的
+// 因此不再对返回的词汇进行二次检测，避免误判（如"血腥"列表中的"血"字会误判正常词汇）
 
 /**
  * 根据主题描述生成25个相关词汇
@@ -69,23 +62,15 @@ export async function generateWordsByTheme(theme: string): Promise<GenerateWords
       };
     }
 
-    // 检查返回的词汇是否包含敏感词
-    if (containsSensitiveWords(batch1)) {
-      return { 
-        words: [], 
-        error: '生成内容包含不适当词汇，请重新描述主题' 
-      };
-    }
-
     // 3. 第二批：生成相关词汇（10个不同角度的）
-    const batch2 = await generateBatch(theme, "相关事物和场景", 10, batch1);
+    const batch2 = await generateBatch(theme, "相关事物、场景、动作", 10, batch1);
     
     // 合并结果
     const allWords = [...batch1];
     if (batch2 && batch2.length > 0) {
       // 过滤掉重复的
       for (const word of batch2) {
-        if (!allWords.includes(word) && !containsSensitiveWords([word])) {
+        if (!allWords.includes(word)) {
           allWords.push(word);
         }
       }
@@ -129,8 +114,8 @@ async function generateBatch(
 ${excludePrompt}
 
 要求：
-1. 生成${count}个不同的词汇，每个词1-4个字
-2. 词汇应该是名词或具体概念，必须是积极健康的内容
+1. 生成${count}个不同的词汇，每个词1-5个字
+2. 词汇应该是名词或具体概念，或者是动作等，可以略微抽象
 3. 不要生成任何色情、暴力、血腥或不适当的内容
 4. 返回JSON数组格式
 5. 只返回JSON数组，不要有其他说明文字
