@@ -365,6 +365,30 @@ export function updateMaxPlayers(roomId: string, socketId: string, maxPlayers: n
   return { success: true, state: room };
 }
 
+// 设置自定义词汇
+export function setRoomCustomWords(roomId: string, socketId: string, words: string[] | null, theme?: string | null):
+  { success: boolean; error?: string; state?: GameState } {
+  
+  const room = rooms.get(roomId);
+  if (!room) {
+    return { success: false, error: '房间不存在' };
+  }
+  
+  const player = room.players.find(p => p.socketId === socketId);
+  if (!player || !player.isHost) {
+    return { success: false, error: '只有房主可以设置词汇' };
+  }
+  
+  if (room.phase !== 'waiting') {
+    return { success: false, error: '游戏已开始' };
+  }
+  
+  room.customWords = words;
+  room.wordTheme = theme || null;
+  
+  return { success: true, state: room };
+}
+
 // 开始游戏
 export function startGameByHost(roomId: string, socketId: string): 
   { success: boolean; error?: string; state?: GameState } {
@@ -389,7 +413,7 @@ export function startGameByHost(roomId: string, socketId: string):
   }
   
   try {
-    const newState = startGame(room);
+    const newState = startGame(room, room.customWords);
     rooms.set(roomId, newState);
     return { success: true, state: newState };
   } catch (error) {

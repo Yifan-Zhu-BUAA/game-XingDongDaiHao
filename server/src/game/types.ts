@@ -50,6 +50,8 @@ export interface GameState {
   createdAt: number;
   startedAt: number | null;
   endedAt: number | null;
+  customWords: string[] | null; // 自定义词汇
+  wordTheme: string | null; // 词汇主题描述
 }
 
 export interface GuessRecord {
@@ -95,6 +97,7 @@ export interface ClientToServerEvents {
   'chat:send': (message: string) => void;
   'config:update': (config: Partial<RoomConfig>, callback: (success: boolean, error?: string) => void) => void;
   'player:rename': (newName: string, callback: (success: boolean, error?: string) => void) => void;
+  'words:set': (words: string[] | null, theme: string | null, callback: (success: boolean, error?: string) => void) => void;
 }
 
 export interface ChatMessage {

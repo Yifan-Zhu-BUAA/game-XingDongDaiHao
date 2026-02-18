@@ -60,6 +60,8 @@ export interface GameState {
   createdAt: number;
   startedAt: number | null;
   endedAt: number | null;
+  customWords: string[] | null;
+  wordTheme: string | null;
 }
 
 export interface RoomConfig {

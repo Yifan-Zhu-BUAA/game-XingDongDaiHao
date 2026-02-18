@@ -6,6 +6,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 import { ClientToServerEvents, ServerToClientEvents, CardType } from './game/types.js';
+import { generateWordsByTheme } from './utils/aiService.js';
 import {
   joinRoom,
   leaveRoom,
@@ -25,6 +26,7 @@ import {
   getPlayerRoom,
   getRoomPlayerSockets,
   getOrCreateRoom,
+  setRoomCustomWords,
 } from './rooms/roomManager.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -66,6 +68,31 @@ app.get('/api/room/:roomId', (req, res) => {
     playerCount: room.players.length,
     maxPlayers: room.maxPlayers,
   });
+});
+
+// 生成自定义词汇接口
+app.post('/api/generate-words', async (req, res) => {
+  const { theme } = req.body;
+  
+  if (!theme || typeof theme !== 'string') {
+    res.status(400).json({ error: '请提供主题描述' });
+    return;
+  }
+  
+  if (theme.length > 100) {
+    res.status(400).json({ error: '主题描述太长' });
+    return;
+  }
+  
+  console.log(`Generating words for theme: ${theme}`);
+  const result = await generateWordsByTheme(theme);
+  
+  if (result.error) {
+    res.status(500).json({ error: result.error });
+    return;
+  }
+  
+  res.json({ words: result.words });
 });
 
 // Socket.io配置
@@ -223,6 +250,23 @@ io.on('connection', (socket) => {
     } else {
       callback(true);
     }
+  });
+
+  // 设置自定义词汇
+  socket.on('words:set', (words: string[] | null, theme: string | null, callback: (success: boolean, error?: string) => void) => {
+    const roomId = getPlayerRoom(socket.id);
+    if (!roomId) {
+      callback(false, '不在房间中');
+      return;
+    }
+    
+    const { success, error, state } = setRoomCustomWords(roomId, socket.id, words, theme);
+    
+    if (success && state) {
+      io.to(roomId).emit('game:state', state);
+    }
+    
+    callback(success, error);
   });
 
   // 开始游戏

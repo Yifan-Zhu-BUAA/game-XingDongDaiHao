@@ -28,6 +28,7 @@ interface ClientToServerEvents {
   'turn:end': (callback: (success: boolean, error?: string) => void) => void;
   'chat:send': (message: string) => void;
   'config:update': (config: { maxPlayers?: number }, callback: (success: boolean, error?: string) => void) => void;
+  'words:set': (words: string[] | null, theme: string | null, callback: (success: boolean, error?: string) => void) => void;
 }
 
 interface SocketStore {
@@ -39,6 +40,8 @@ interface SocketStore {
   roomId: string | null;
   error: string | null;
   lastGuessResult: GuessResult | null;
+  customWords: string[] | null;
+  isGeneratingWords: boolean;
   
   // Actions
   connect: () => void;
@@ -56,6 +59,8 @@ interface SocketStore {
   updateMaxPlayers: (maxPlayers: number) => Promise<boolean>;
   renamePlayer: (newName: string) => Promise<boolean>;
   clearError: () => void;
+  generateWords: (theme: string) => Promise<string[] | null>;
+  setCustomWords: (words: string[] | null) => void;
 }
 
 // 服务器地址
@@ -99,6 +104,8 @@ export const useSocketStore = create<SocketStore>((set, get) => ({
   roomId: localStorage.getItem(LS_ROOM_ID) || null,
   error: null,
   lastGuessResult: null,
+  customWords: null,
+  isGeneratingWords: false,
 
   connect: () => {
     const clientId = getClientId();
@@ -373,4 +380,65 @@ export const useSocketStore = create<SocketStore>((set, get) => ({
   },
 
   clearError: () => set({ error: null }),
+
+  generateWords: async (theme: string) => {
+    set({ isGeneratingWords: true, error: null });
+    try {
+      const response = await fetch(`${SERVER_URL}/api/generate-words`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ theme }),
+      });
+      
+      const data = await response.json();
+      
+      if (!response.ok) {
+        set({ error: data.error || '生成词汇失败', isGeneratingWords: false });
+        return null;
+      }
+      
+      // 检查是否有错误信息（如内容不当）
+      if (data.error) {
+        set({ error: data.error, isGeneratingWords: false, customWords: null });
+        return null;
+      }
+      
+      // 检查是否返回了足够的词汇
+      if (!data.words || data.words.length === 0) {
+        set({ error: '无法生成词汇，请尝试其他主题描述', isGeneratingWords: false, customWords: null });
+        return null;
+      }
+      
+      set({ customWords: data.words, isGeneratingWords: false });
+      
+      // 同步到服务器
+      const socket = get().socket;
+      if (socket) {
+        socket.emit('words:set', data.words, theme, (success, error) => {
+          if (!success && error) {
+            console.error('Failed to set custom words:', error);
+          }
+        });
+      }
+      
+      return data.words;
+    } catch (error) {
+      set({ error: '网络请求失败', isGeneratingWords: false });
+      return null;
+    }
+  },
+
+  setCustomWords: (words: string[] | null) => {
+    set({ customWords: words });
+    
+    // 同步到服务器
+    const socket = get().socket;
+    if (socket) {
+      socket.emit('words:set', words, null, (success, error) => {
+        if (!success && error) {
+          console.error('Failed to set custom words:', error);
+        }
+      });
+    }
+  },
 }));

@@ -44,12 +44,28 @@ export function createGameState(roomId: string, maxPlayers: number = 4): GameSta
     createdAt: Date.now(),
     startedAt: null,
     endedAt: null,
+    customWords: null,
+    wordTheme: null,
   };
 }
 
 // 创建卡片
-function createCards(): Card[] {
-  const words = getRandomWords(GRID_SIZE);
+function createCards(customWords?: string[] | null): Card[] {
+  let words: string[] = [];
+  
+  if (customWords && customWords.length > 0) {
+    // 使用自定义词汇，如果不足则补充默认词汇
+    words = [...customWords];
+    if (words.length < GRID_SIZE) {
+      const additionalWords = getRandomWords(GRID_SIZE - words.length);
+      words = [...words, ...additionalWords];
+    } else {
+      words = words.slice(0, GRID_SIZE);
+    }
+  } else {
+    words = getRandomWords(GRID_SIZE);
+  }
+  
   const cards: Card[] = [];
   
   // 确定哪方先手（先手方有9张，后手方8张）
@@ -96,7 +112,7 @@ function createCards(): Card[] {
 }
 
 // 开始游戏
-export function startGame(state: GameState): GameState {
+export function startGame(state: GameState, customWords?: string[] | null): GameState {
   if (state.players.length < 2) {
     throw new Error('至少需要2名玩家');
   }
@@ -105,8 +121,8 @@ export function startGame(state: GameState): GameState {
   const seatedPlayers = state.players.filter(p => p.seatIndex !== null);
   const newPlayers = assignTeamsAndRoles(seatedPlayers, state.maxPlayers);
   
-  // 创建卡片
-  const cards = createCards();
+  // 创建卡片（使用自定义词汇或默认词库）
+  const cards = createCards(customWords);
   
   // 确定先手（牌多的一方先手）
   const redCount = cards.filter(c => c.type === 'red').length;
@@ -418,6 +434,8 @@ export function restartGame(state: GameState): GameState {
     clueHistory: [],
     startedAt: null,
     endedAt: null,
+    customWords: null,
+    wordTheme: null,
   });
 }
 
