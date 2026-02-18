@@ -40,7 +40,13 @@ echo -e "${GREEN}✅ 已推送到远程仓库${NC}\n"
 
 # 3. 远程部署
 echo -e "${YELLOW}[3/4] 远程服务器部署${NC}"
-sshpass -p 'Zyf86979196' ssh -o StrictHostKeyChecking=no root@8.134.10.196 'cd /root/game-XingDongDaiHao && git pull origin main && cd server && npm run build 2>&1 | tail -5 && cd .. && NODE_ENV=production pm2 restart codenames'
+# 先更新服务端代码并构建
+sshpass -p 'Zyf86979196' ssh -o StrictHostKeyChecking=no root@8.134.10.196 'cd /root/game-XingDongDaiHao && git pull origin main && cd server && npm run build 2>&1 | tail -5'
+# 同步本地构建的前端文件到服务器
+echo "同步前端构建文件..."
+sshpass -p 'Zyf86979196' rsync -avz --delete client/dist/ root@8.134.10.196:/root/game-XingDongDaiHao/client/dist/
+# 重启服务
+sshpass -p 'Zyf86979196' ssh -o StrictHostKeyChecking=no root@8.134.10.196 'cd /root/game-XingDongDaiHao && NODE_ENV=production pm2 restart codenames'
 echo -e "${GREEN}✅ 远程部署完成${NC}\n"
 
 # 4. 健康检查
