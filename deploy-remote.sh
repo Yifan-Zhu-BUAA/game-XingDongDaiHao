@@ -1,5 +1,6 @@
 #!/bin/bash
 # 远程部署脚本（拉取构建+配置Nginx+健康检查）
+# 适配 Alibaba Cloud Linux / CentOS / RHEL
 
 set -e
 
@@ -14,23 +15,28 @@ echo -e "${GREEN}✅ 代码部署完成${NC}"
 
 echo -e "${YELLOW}[2/4] 配置 Nginx 反向代理${NC}"
 sshpass -p 'Zyf86979196' ssh -o StrictHostKeyChecking=no root@8.134.10.196 '
-  # 安装 Nginx（如果未安装）
+  # 安装 Nginx（如果未安装）- 适配 Alibaba Cloud Linux
   if ! command -v nginx &> /dev/null; then
-    apt update && apt install nginx -y
+    echo "正在安装 Nginx..."
+    # 下载 CentOS 8 的 nginx rpm 包
+    curl -fsSL -o /tmp/nginx.rpm "http://nginx.org/packages/centos/8/x86_64/RPMS/nginx-1.24.0-1.el8.ngx.x86_64.rpm" || \
+    curl -fsSL -o /tmp/nginx.rpm "http://nginx.org/packages/centos/9/x86_64/RPMS/nginx-1.24.0-1.el9.ngx.x86_64.rpm"
+    rpm -ivh /tmp/nginx.rpm --nodeps 2>/dev/null || yum localinstall /tmp/nginx.rpm -y --nogpgcheck
   fi
   
   # 复制配置文件
-  cp /root/game-XingDongDaiHao/nginx/xddh.connectgame.me.conf /etc/nginx/sites-available/
+  mkdir -p /etc/nginx/conf.d
+  cp /root/game-XingDongDaiHao/nginx/xddh.connectgame.me.conf /etc/nginx/conf.d/
   
-  # 启用配置
-  ln -sf /etc/nginx/sites-available/xddh.connectgame.me.conf /etc/nginx/sites-enabled/
-  rm -f /etc/nginx/sites-enabled/default
+  # 禁用默认配置
+  mv /etc/nginx/conf.d/default.conf /etc/nginx/conf.d/default.conf.bak 2>/dev/null || true
   
   # 测试并重载
-  nginx -t && systemctl restart nginx
+  nginx -t && (nginx -s reload 2>/dev/null || nginx)
   
   # 防火墙放行
-  ufw allow "Nginx Full" 2>/dev/null || true
+  firewall-cmd --permanent --add-service=http 2>/dev/null || true
+  firewall-cmd --reload 2>/dev/null || true
 '
 echo -e "${GREEN}✅ Nginx 配置完成${NC}"
 
